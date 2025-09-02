@@ -1,20 +1,27 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { CreateHealthRecordDto } from './dto/create-health-record.dto';
-import { UpdateHealthRecordDto } from './dto/update-health-record.dto';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HealthRecord } from './entities/health.entity';
+import { RpcException } from '@nestjs/microservices';
+import { CreateHealthRecordDto } from './dto/create-health-record.dto';
+import { UpdateHealthRecordDto } from './dto/update-health-record.dto';
 
 @Injectable()
 export class HealthService {
   constructor(
     @InjectRepository(HealthRecord)
-    private readonly healthRecordRepository: Repository<HealthRecord>
-  ){}
+    private readonly healthRecordRepository: Repository<HealthRecord>,
+  ) {}
 
   async create(createHealthRecordDto: CreateHealthRecordDto) {
-    const healthRecord = this.healthRecordRepository.create(createHealthRecordDto);
-    return await this.healthRecordRepository.save(healthRecord);  
+    const healthRecord = this.healthRecordRepository.create(
+      createHealthRecordDto,
+    );
+    return await this.healthRecordRepository.save(healthRecord);
   }
 
   async findAll() {
@@ -25,7 +32,7 @@ export class HealthService {
     return await this.healthRecordRepository.find({
       where: {
         petId,
-      }
+      },
     });
   }
 
@@ -33,7 +40,7 @@ export class HealthService {
     const healthRecord = await this.healthRecordRepository.findOne({
       where: {
         id,
-      }
+      },
     });
     if (!healthRecord) {
       throw new NotFoundException('Health record not found');
@@ -41,13 +48,26 @@ export class HealthService {
     return healthRecord;
   }
 
-  async update(id: string, updateHealthRecordDto: UpdateHealthRecordDto) {
-    const healthRecord = await this.findOne(id);
-
-    return await this.healthRecordRepository.save({
-      ...healthRecord,
-      ...updateHealthRecordDto,
-    });
+  async update(updateHealthRecordDto: UpdateHealthRecordDto) {
+    try {
+      const { id } = updateHealthRecordDto;
+      if (!id) throw new BadRequestException('Id health record is required');
+      const healthRecord = await this.findOne(id);
+      return await this.healthRecordRepository.save({
+        ...healthRecord,
+        ...updateHealthRecordDto,
+      });
+    } catch (error) {
+      throw error instanceof BadRequestException
+        ? new RpcException({
+            statusCode: error.getStatus(),
+            message: error.message,
+          })
+        : new RpcException({
+            statusCode: 500,
+            message: 'Not able to update health record',
+          });
+    }
   }
 
   async remove(id: string) {
