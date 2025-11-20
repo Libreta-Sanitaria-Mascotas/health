@@ -106,4 +106,47 @@ export class HealthService {
     const healthRecord = await this.findOne(id);
     return await this.healthRecordRepository.remove(healthRecord);
   }
+
+  /**
+   * Vincula un archivo de media a un registro de salud
+   */
+  async linkMedia(healthRecordId: string, mediaId: string) {
+    const record = await this.healthRecordRepository.findOne({
+      where: { id: healthRecordId },
+    });
+
+    if (!record) {
+      throw new RpcException({
+        statusCode: 404,
+        message: 'Registro de salud no encontrado',
+      });
+    }
+
+    const currentMediaIds = record.mediaIds || [];
+    if (!currentMediaIds.includes(mediaId)) {
+      record.mediaIds = [...currentMediaIds, mediaId];
+      await this.healthRecordRepository.save(record);
+    }
+    return record;
+  }
+
+  /**
+   * Elimina la vinculación de un archivo de media
+   */
+  async unlinkMedia(healthRecordId: string, mediaId: string) {
+    const record = await this.healthRecordRepository.findOne({
+      where: { id: healthRecordId },
+    });
+
+    if (!record) {
+      throw new RpcException({
+        statusCode: 404,
+        message: 'Registro de salud no encontrado',
+      });
+    }
+
+    record.mediaIds = (record.mediaIds || []).filter(id => id !== mediaId);
+    await this.healthRecordRepository.save(record);
+    return record;
+  }
 }

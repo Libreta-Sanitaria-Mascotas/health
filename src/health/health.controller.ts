@@ -65,4 +65,14 @@ export class HealthController {
   remove(@Payload('id') id: string) {
     return this.healthService.remove(id);
   }
+
+  @MessagePattern({ cmd: 'link_media' })
+  async linkMedia(@Payload() data: { healthRecordId: string; mediaId: string }) {
+    return await this.healthService.linkMedia(data.healthRecordId, data.mediaId);
+  }
+
+  @MessagePattern({ cmd: 'unlink_media' })
+  async unlinkMedia(@Payload() data: { healthRecordId: string; mediaId: string }) {
+    return await this.healthService.unlinkMedia(data.healthRecordId, data.mediaId);
+  }
 }
