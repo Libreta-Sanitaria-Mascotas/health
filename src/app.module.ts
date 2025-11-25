@@ -6,11 +6,11 @@ import { envs } from './config';
 @Module({
   imports: [HealthModule, TypeOrmModule.forRootAsync({
     useFactory:async () => {
-      const { db } = envs
+      const { db, nodeEnv } = envs
       return{
         ...db,
         entities: [__dirname + '/**/entities/*.entity{.ts,.js}'],
-        synchronize: true,
+        synchronize: nodeEnv === 'development',
       };
     }
   })],

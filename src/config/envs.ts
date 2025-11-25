@@ -11,6 +11,8 @@ interface EnvVars {
   DB_PASSWORD: string;
   DB_NAME: string;
   DB_TYPE: 'postgres' | 'mysql' | 'mariadb' | 'sqlite';
+  RABBITMQ_URL: string;
+  RABBITMQ_QUEUE: string;
 }
 
 const { error, value } = envValidationSchema.validate(process.env);
@@ -31,5 +33,9 @@ export const envs = {
     password: envVars.DB_PASSWORD,
     database: envVars.DB_NAME,
     type: envVars.DB_TYPE,
-  }
+  },
+  rabbitmq: {
+    url: envVars.RABBITMQ_URL,
+    queue: envVars.RABBITMQ_QUEUE,
+  },
 };
