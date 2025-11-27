@@ -20,6 +20,9 @@ export class HealthService {
     @Inject('PET_SERVICE') private readonly petClient: ClientProxy,
   ) {}
 
+  /**
+   * Crea un registro de salud validando que la mascota exista.
+   */
   async create(createHealthRecordDto: CreateHealthRecordDto) {
     try {
       if (!createHealthRecordDto.petId) {
@@ -56,10 +59,12 @@ export class HealthService {
     }
   }
 
+  /** Devuelve todos los registros (uso interno). */
   async findAll() {
     return await this.healthRecordRepository.find();
   }
 
+  /** Obtiene registros por mascota. */
   async findByPetId(petId: string) {
     return await this.healthRecordRepository.find({
       where: {
@@ -68,6 +73,7 @@ export class HealthService {
     });
   }
 
+  /** Busca un registro de salud por ID. */
   async findOne(id: string) {
     const healthRecord = await this.healthRecordRepository.findOne({
       where: {
@@ -80,11 +86,17 @@ export class HealthService {
     return healthRecord;
   }
 
+  /**
+   * Actualiza registro impidiendo cambiar petId.
+   */
   async update(updateHealthRecordDto: UpdateHealthRecordDto) {
     try {
       const { id } = updateHealthRecordDto;
       if (!id) throw new BadRequestException('Id health record is required');
       const healthRecord = await this.findOne(id);
+      if (updateHealthRecordDto.petId && updateHealthRecordDto.petId !== healthRecord.petId) {
+        throw new BadRequestException('No está permitido cambiar la mascota asociada');
+      }
       return await this.healthRecordRepository.save({
         ...healthRecord,
         ...updateHealthRecordDto,
@@ -102,6 +114,7 @@ export class HealthService {
     }
   }
 
+  /** Elimina un registro por ID. */
   async remove(id: string) {
     const healthRecord = await this.findOne(id);
     return await this.healthRecordRepository.remove(healthRecord);

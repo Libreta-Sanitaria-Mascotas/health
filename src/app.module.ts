@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HealthModule } from './health/health.module';
 import { envs } from './config';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
   imports: [HealthModule, TypeOrmModule.forRootAsync({
@@ -17,4 +18,10 @@ import { envs } from './config';
   controllers: [],
   providers: [],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RequestIdMiddleware)
+      .forRoutes({ path: '*path', method: RequestMethod.ALL });
+  }
+}

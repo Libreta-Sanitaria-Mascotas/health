@@ -1,5 +1,5 @@
-import 'dotenv/config';
 import { envValidationSchema } from './env.validation';
+import { loadEnv } from './env.loader';
 
 interface EnvVars {
   NODE_ENV: string;
@@ -16,13 +16,7 @@ interface EnvVars {
   RABBITMQ_QUEUE: string;
 }
 
-const { error, value } = envValidationSchema.validate(process.env);
-
-if (error) {
-  throw new Error(`Config validation error: ${error.message}`);
-}
-
-const envVars: EnvVars = value;
+const envVars = loadEnv<EnvVars>(envValidationSchema);
 
 export const envs = {
   nodeEnv: envVars.NODE_ENV,
