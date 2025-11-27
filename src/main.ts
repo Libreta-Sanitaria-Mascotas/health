@@ -1,11 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
-import { ValidationPipe } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { envs } from './config';
 import { RpcExceptionFilter } from './common/rpc-exception.filter';
 
 async function bootstrap() {
+  const logger = new Logger('HealthMicroservice');
   const app = await NestFactory.createMicroservice<MicroserviceOptions>(
     AppModule,
     {
@@ -28,6 +29,6 @@ async function bootstrap() {
   );
   app.useGlobalFilters(new RpcExceptionFilter());
   await app.listen();
-  console.log(`Health microservice is listening on RabbitMQ (${envs.rabbitmq.queue})`);
+  logger.log(`Health microservice is listening on RabbitMQ (${envs.rabbitmq.queue})`);
 }
 bootstrap();
