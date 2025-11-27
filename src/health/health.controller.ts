@@ -62,8 +62,8 @@ export class HealthController {
   //@ApiParam({ name: 'id', description: 'ID of the health record' })
   //@Delete(':id')
   @MessagePattern({ cmd: 'delete_health_record_by_id' })
-  remove(@Payload('id') id: string) {
-    return this.healthService.remove(id);
+  remove(@Payload() data: { id: string; ownerId?: string }) {
+    return this.healthService.remove(data.id, data.ownerId);
   }
 
   @MessagePattern({ cmd: 'link_media' })

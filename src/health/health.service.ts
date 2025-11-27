@@ -31,21 +31,35 @@ export class HealthService {
           message: 'El ID de la mascota es obligatorio',
         });
       }
+      if (!createHealthRecordDto.ownerId) {
+        throw new RpcException({
+          statusCode: 400,
+          message: 'El ID del propietario es obligatorio',
+        });
+      }
 
-      // Validar que la mascota existe
-      const petValidation = await firstValueFrom(
-        this.petClient.send({ cmd: 'validate_pet' }, { id: createHealthRecordDto.petId })
+      // Validar que la mascota existe y pertenece al ownerId
+      const pet = await firstValueFrom(
+        this.petClient.send({ cmd: 'find_pet' }, createHealthRecordDto.petId)
       );
 
-      if (!petValidation || !petValidation.exists) {
+      if (!pet) {
         throw new RpcException({
           statusCode: 404,
           message: `La mascota con ID ${createHealthRecordDto.petId} no existe`,
         });
       }
 
+      if (pet.ownerId !== createHealthRecordDto.ownerId) {
+        throw new RpcException({
+          statusCode: 403,
+          message: 'No está autorizado para crear registros de esta mascota',
+        });
+      }
+
+      const { ownerId, ...data } = createHealthRecordDto;
       const healthRecord = this.healthRecordRepository.create(
-        createHealthRecordDto,
+        data,
       );
       return await this.healthRecordRepository.save(healthRecord);
     } catch (error) {
@@ -93,30 +107,78 @@ export class HealthService {
     try {
       const { id } = updateHealthRecordDto;
       if (!id) throw new BadRequestException('Id health record is required');
+      if (!updateHealthRecordDto.ownerId) {
+        throw new BadRequestException('Owner id is required');
+      }
       const healthRecord = await this.findOne(id);
       if (updateHealthRecordDto.petId && updateHealthRecordDto.petId !== healthRecord.petId) {
         throw new BadRequestException('No está permitido cambiar la mascota asociada');
       }
+
+      const pet = await firstValueFrom(
+        this.petClient.send({ cmd: 'find_pet' }, healthRecord.petId)
+      );
+
+      if (!pet) {
+        throw new RpcException({
+          statusCode: 404,
+          message: 'La mascota asociada al registro no existe',
+        });
+      }
+
+      if (pet.ownerId !== updateHealthRecordDto.ownerId) {
+        throw new RpcException({
+          statusCode: 403,
+          message: 'No está autorizado para modificar este registro',
+        });
+      }
+
+      const { ownerId, ...payload } = updateHealthRecordDto;
       return await this.healthRecordRepository.save({
         ...healthRecord,
-        ...updateHealthRecordDto,
+        ...payload,
       });
     } catch (error) {
-      throw error instanceof BadRequestException
-        ? new RpcException({
-            statusCode: error.getStatus(),
-            message: error.message,
-          })
-        : new RpcException({
-            statusCode: 500,
-            message: 'Not able to update health record',
-          });
+      if (error instanceof RpcException) {
+        throw error;
+      }
+      if (error instanceof BadRequestException) {
+        throw new RpcException({
+          statusCode: error.getStatus(),
+          message: error.message,
+        });
+      }
+      throw new RpcException({
+        statusCode: 500,
+        message: 'Not able to update health record',
+      });
     }
   }
 
   /** Elimina un registro por ID. */
-  async remove(id: string) {
+  async remove(id: string, ownerId?: string) {
+    if (!ownerId) {
+      throw new RpcException({
+        statusCode: 400,
+        message: 'Owner id is required',
+      });
+    }
     const healthRecord = await this.findOne(id);
+    const pet = await firstValueFrom(
+      this.petClient.send({ cmd: 'find_pet' }, healthRecord.petId)
+    );
+    if (!pet) {
+      throw new RpcException({
+        statusCode: 404,
+        message: 'La mascota asociada al registro no existe',
+      });
+    }
+    if (pet.ownerId !== ownerId) {
+      throw new RpcException({
+        statusCode: 403,
+        message: 'No está autorizado para eliminar este registro',
+      });
+    }
     return await this.healthRecordRepository.remove(healthRecord);
   }
 
