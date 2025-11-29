@@ -38,7 +38,7 @@ graph TB
     Sistema((Sistema))
     
     Usuario --> UC1[UC-HEALTH-01: Crear Registro]
-    Usuario --> UC2[UC-HEALTH-02: Crear con Certificado - Saga]
+    Usuario --> UC2[UC-HEALTH-02: Crear con Adjuntos - Saga]
     Sistema --> UC3[UC-HEALTH-03: Listar Todos]
     Usuario --> UC4[UC-HEALTH-04: Listar por Mascota]
     Usuario --> UC5[UC-HEALTH-05: Obtener por ID]
@@ -100,35 +100,33 @@ sequenceDiagram
 
 ---
 
-### UC-HEALTH-02: Crear Registro de Salud con Certificado (Saga)
+### UC-HEALTH-02: Crear Registro de Salud con Adjuntos (Saga)
 
-**Descripción**: Crea un registro de salud con certificado médico adjunto usando patrón Saga.
+**Descripción**: Crea un registro de salud y adjunta uno o más documentos (imágenes o PDFs) de forma atómica.
 
 **Actor**: Usuario/Veterinario
 
 **Precondiciones**: 
 - Usuario debe estar autenticado
 - Mascota debe existir y pertenecer al usuario
-- Certificado debe ser válido (PDF, JPEG, PNG)
-- Tamaño máximo: 10MB
+- Adjuntos válidos (PDF, JPEG, PNG) hasta 6MB c/u
 
 **Flujo Principal**:
-1. Usuario envía datos del registro + certificado
-2. Gateway inicia Saga "CreateHealthWithCertificateSaga"
+1. Usuario envía datos del registro + archivos adjuntos
+2. Gateway inicia Saga "CreateHealthWithAttachmentsSaga"
 3. **Paso 1**: Crear registro de salud en Health Service
-4. **Paso 2**: Subir certificado al Media Service con entityType='health'
-5. **Paso 3**: Vincular media al registro de salud
-6. Saga retorna registro y certificado creados
+4. **Paso 2**: Subir cada adjunto a Media Service con `entityType='health'` y `entityId=healthRecord.id`
+5. **Paso 3**: Vincular cada `mediaId` al registro en Health Service
+6. Saga retorna registro creado con `mediaIds` poblados y lista de adjuntos
 7. Gateway retorna resultado al usuario
 
 **Flujo de Compensación** (si falla):
-- Si falla paso 3: Eliminar certificado y registro
-- Si falla paso 2: Eliminar registro creado
-- Si falla paso 1: No hay compensación necesaria
+- Si falla al subir o vincular algún adjunto: eliminar los archivos cargados y el registro creado
+- Si falla la creación del registro: no hay compensación adicional
 
 **Postcondiciones**:
 - Registro de salud creado
-- Certificado subido y vinculado
+- Todos los adjuntos subidos y vinculados de forma consistente
 
 **Diagrama de Secuencia**:
 
@@ -136,13 +134,13 @@ sequenceDiagram
 sequenceDiagram
     participant U as Usuario
     participant G as Gateway
-    participant Saga as CreateHealthWithCertificateSaga
+    participant Saga as CreateHealthWithAttachmentsSaga
     participant HS as Health Service
     participant MS as Media Service
     participant DB as PostgreSQL
     
-    U->>G: POST /health/with-certificate (multipart/form-data)
-    G->>Saga: execute({healthData, certificate})
+    U->>G: POST /health/with-media (multipart/form-data)
+    G->>Saga: execute({healthData, attachments[]})
     
     Note over Saga: Paso 1: Crear Registro
     Saga->>HS: create_health_record {petId, type, ...}
@@ -150,23 +148,19 @@ sequenceDiagram
     DB-->>HS: Registro creado
     HS-->>Saga: HealthRecord {id, ...}
     
-    Note over Saga: Paso 2: Subir Certificado
-    Saga->>MS: POST /media/upload (HTTP)
-    MS-->>Saga: Media {id, path, ...}
+    loop Por cada adjunto
+        Saga->>MS: POST /media/upload (entityType=health, entityId=record.id)
+        MS-->>Saga: Media {id, ...}
+        Saga->>HS: link_media {healthRecordId, mediaId}
+        HS-->>Saga: OK
+    end
     
-    Note over Saga: Paso 3: Vincular Media
-    Saga->>HS: link_media {healthRecordId, mediaId}
-    HS->>DB: UPDATE health_records SET mediaIds
-    DB-->>HS: Vinculación exitosa
-    HS-->>Saga: OK
+    Saga-->>G: {healthRecord con mediaIds, attachments}
+    G-->>U: Registro con adjuntos creado
     
-    Saga-->>G: {healthRecord, certificate}
-    G-->>U: Registro con certificado creado
-    
-    Note over Saga: Si falla paso 2 o 3
-    Saga->>HS: delete_health_record_by_id {id}
+    Note over Saga: Si falla carga o vínculo
     Saga->>MS: delete_file {id}
-    HS-->>Saga: Compensación completada
+    Saga->>HS: delete_health_record_by_id {id}
 ```
 
 ---
@@ -498,7 +492,7 @@ sequenceDiagram
 | Método | Endpoint | Descripción | Autenticación |
 |--------|----------|-------------|---------------|
 | POST | `/health` | Crear registro de salud | ✅ JWT |
-| POST | `/health/with-certificate` | Crear con certificado (Saga) | ✅ JWT |
+| POST | `/health/with-media` | Crear con adjuntos (Saga) | ✅ JWT |
 | GET | `/health` | Listar mis registros | ✅ JWT |
 | GET | `/health/pet/:petId` | Listar por mascota | ✅ JWT |
 | GET | `/health/:id` | Obtener registro por ID | ✅ JWT |
@@ -507,18 +501,17 @@ sequenceDiagram
 
 ## Sagas
 
-### CreateHealthWithCertificateSaga
+### CreateHealthWithAttachmentsSaga
 
-**Propósito**: Garantizar consistencia al crear registro con certificado
+**Propósito**: Garantizar consistencia al crear registro con uno o varios adjuntos
 
 **Pasos**:
 1. Crear registro de salud en Health Service
-2. Subir certificado al Media Service
-3. Vincular media al registro de salud
+2. Subir cada adjunto a Media Service (entityType health, entityId = registro)
+3. Vincular cada `mediaId` al registro de salud
 
 **Compensaciones**:
-- Si falla paso 3: Eliminar certificado y registro
-- Si falla paso 2: Eliminar registro creado
+- Si falla la subida o vínculo de adjuntos: eliminar archivos subidos y el registro creado
 
 **Resiliencia**:
 - Timeout: 3000ms por paso

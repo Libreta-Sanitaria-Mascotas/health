@@ -57,10 +57,18 @@ export class HealthService {
         });
       }
 
-      const { ownerId, ...data } = createHealthRecordDto;
-      const healthRecord = this.healthRecordRepository.create(
-        data,
+      this.assertValidDates(
+        createHealthRecordDto.date,
+        createHealthRecordDto.hasNextVisit ?? false,
+        createHealthRecordDto.nextVisitDate,
       );
+
+      const { ownerId, ...data } = createHealthRecordDto;
+      const healthRecord = this.healthRecordRepository.create({
+        ...data,
+        hasNextVisit: data.hasNextVisit ?? false,
+        nextVisitDate: data.hasNextVisit ? data.nextVisitDate : null,
+      });
       return await this.healthRecordRepository.save(healthRecord);
     } catch (error) {
       if (error instanceof RpcException) {
@@ -134,9 +142,22 @@ export class HealthService {
       }
 
       const { ownerId, ...payload } = updateHealthRecordDto;
+      const hasNextVisit = payload.hasNextVisit ?? healthRecord.hasNextVisit ?? false;
+      const effectiveDate = payload.date ?? healthRecord.date;
+      const effectiveNextVisit = hasNextVisit
+        ? payload.nextVisitDate ?? healthRecord.nextVisitDate ?? undefined
+        : undefined;
+
+      this.assertValidDates(effectiveDate, hasNextVisit, effectiveNextVisit);
+
       return await this.healthRecordRepository.save({
         ...healthRecord,
         ...payload,
+        hasNextVisit,
+        date: effectiveDate,
+        nextVisitDate: hasNextVisit
+          ? effectiveNextVisit ?? null
+          : null,
       });
     } catch (error) {
       if (error instanceof RpcException) {
@@ -179,7 +200,7 @@ export class HealthService {
         message: 'No está autorizado para eliminar este registro',
       });
     }
-    return await this.healthRecordRepository.remove(healthRecord);
+    return await this.healthRecordRepository.softRemove(healthRecord);
   }
 
   /**
@@ -223,5 +244,36 @@ export class HealthService {
     record.mediaIds = (record.mediaIds || []).filter(id => id !== mediaId);
     await this.healthRecordRepository.save(record);
     return record;
+  }
+
+  /**
+   * Valida coherencia de fechas y evita registros médicos en el futuro lejano.
+   */
+  private assertValidDates(date: Date, hasNextVisit: boolean, nextVisitDate?: Date) {
+    const now = new Date();
+    const maxFuture = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    if (date > maxFuture) {
+      throw new RpcException({
+        statusCode: 400,
+        message: 'La fecha del registro no puede ser mayor a 7 días en el futuro',
+      });
+    }
+
+    if (hasNextVisit && nextVisitDate) {
+      if (nextVisitDate <= date) {
+        throw new RpcException({
+          statusCode: 400,
+          message: 'La próxima visita debe ser posterior a la fecha del registro',
+        });
+      }
+
+      if (nextVisitDate < now) {
+        throw new RpcException({
+          statusCode: 400,
+          message: 'La próxima visita debe ser en el futuro',
+        });
+      }
+    }
   }
 }
